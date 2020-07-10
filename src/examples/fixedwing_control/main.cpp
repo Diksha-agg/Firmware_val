@@ -41,10 +41,47 @@
  *
  * @author Lorenz Meier <lm@inf.ethz.ch>
  */
+#include <commander/px4_custom_mode.h>
+#include <drivers/drv_hrt.h>
+#include <lib/controllib/blocks.hpp>
+//#include <lib/flight_tasks/FlightTasks.hpp>
+#include <lib/hysteresis/hysteresis.h>
+#include <lib/mathlib/mathlib.h>
+#include <lib/matrix/matrix/math.hpp>
+#include <lib/perf/perf_counter.h>
+#include <lib/systemlib/mavlink_log.h>
+#include <lib/weather_vane/WeatherVane.hpp>
+#include <px4_platform_common/px4_config.h>
+#include <px4_platform_common/defines.h>
+#include <px4_platform_common/module.h>
+#include <px4_platform_common/module_params.h>
+#include <px4_platform_common/px4_work_queue/ScheduledWorkItem.hpp>
+#include <px4_platform_common/posix.h>
+#include <px4_platform_common/tasks.h>
+#include <uORB/Publication.hpp>
+#include <uORB/Subscription.hpp>
+#include <uORB/SubscriptionCallback.hpp>
+#include <uORB/topics/home_position.h>
+#include <uORB/topics/landing_gear.h>
+#include <uORB/topics/parameter_update.h>
+#include <uORB/topics/vehicle_attitude_setpoint.h>
+#include <uORB/topics/vehicle_control_mode.h>
+#include <uORB/topics/vehicle_land_detected.h>
+#include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/vehicle_local_position_setpoint.h>
+#include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/vehicle_trajectory_waypoint.h>
+#include <uORB/topics/hover_thrust_estimate.h>
+
+
+
+
 
 #include "params.h"
-
+#include <matrix/matrix/math.hpp>
+//#include <../build/px4_fmu-v2_default/NuttX/nuttx/include/nuttx/lib/math.h>       /* sin */
 #include <poll.h>
+#include "norm.h"
 
 #include <drivers/drv_hrt.h>
 #include <lib/ecl/geo/geo.h>
@@ -62,260 +99,379 @@
 #include <uORB/topics/vehicle_attitude.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_global_position.h>
-#include <uORB/topics/vehicle_global_position.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/vehicle_status.h>
+#include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/vehicle_attitude.h>
+#include <uORB/topics/vehicle_angular_velocity.h>
 #include <uORB/uORB.h>
+//#include "px4_sim1/codegen/lib/controller/controller.h"
+//#include "controller.h"
+/* Include Files */
+#include "rt_nonfinite.h"
+//#include "controller.h"
 
-/* Prototypes */
+#include "AeroMEst.c"
 
-/**
- * Initialize all parameter handles and values
- *
- */
-extern "C" int parameters_init(struct param_handles *h);
+#include "AeroFEst.c"
 
-/**
- * Update all parameters
- *
- */
-extern "C" int parameters_update(const struct param_handles *h, struct params *p);
+#include "time_trajj.c"
+#include <math.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include "rt_defines.h"
 
-/**
- * Daemon management function.
- *
- * This function allows to start / stop the background task (daemon).
- * The purpose of it is to be able to start the controller on the
- * command line, query its status and stop it, without giving up
- * the command line to one particular process or the need for bg/fg
- * ^Z support by the shell.
- */
+#include "rt_nonfinite.h"
+#include "rtwtypes.h"
+#include "controller_types.h"
+
+
+using namespace matrix;
+
+vehicle_local_position_s _local_pos{};			/**< vehicle local position */
+struct vehicle_attitude_s _v_att {};				/**< vehicle attitude */
+struct vehicle_angular_velocity_s angular_velocity{};		/**< vehicle angular velocity */
+struct actuator_controls_s actuators{};		/**< actuators */
+
+
+
+
+
+
+
 extern "C" __EXPORT int ex_fixedwing_control_main(int argc, char *argv[]);
-
+//extern double rotd[3],omegad[3], controld[2];
 /**
  * Mainloop of daemon.
  */
 int fixedwing_control_thread_main(int argc, char *argv[]);
 
-/**
- * Print the correct usage.
- */
 static void usage(const char *reason);
 
 
-/**
- * Control roll and pitch angle.
- *
- * This very simple roll and pitch controller takes the current roll angle
- * of the system and compares it to a reference. Pitch is controlled to zero and yaw remains
- * uncontrolled (tutorial code, not intended for flight).
- *
- * @param att_sp The current attitude setpoint - the values the system would like to reach.
- * @param att The current attitude. The controller should make the attitude match the setpoint
- * @param rates_sp The angular rate setpoint. This is the output of the controller.
- */
-void control_attitude(const struct vehicle_attitude_setpoint_s *att_sp, const struct vehicle_attitude_s *att,
-		      struct vehicle_rates_setpoint_s *rates_sp,
-		      struct actuator_controls_s *actuators);
-
-/**
- * Control heading.
- *
- * This very simple heading to roll angle controller outputs the desired roll angle based on
- * the current position of the system, the desired position (the setpoint) and the current
- * heading.
- *
- * @param pos The current position of the system
- * @param sp The current position setpoint
- * @param att The current attitude
- * @param att_sp The attitude setpoint. This is the output of the controller
- */
-void control_heading(const struct vehicle_global_position_s *pos, const struct position_setpoint_s *sp,
-		     const struct vehicle_attitude_s *att, struct vehicle_attitude_setpoint_s *att_sp);
-
-/* Variables */
 static bool thread_should_exit = false;		/**< Daemon exit flag */
 static bool thread_running = false;		/**< Daemon status flag */
+
 static int deamon_task;				/**< Handle of deamon task / thread */
-static struct params p;
-static struct param_handles ph;
 
-void control_attitude(const struct vehicle_attitude_setpoint_s *att_sp, const struct vehicle_attitude_s *att,
-		      struct vehicle_rates_setpoint_s *rates_sp,
-		      struct actuator_controls_s *actuators)
+
+static void controller(const double posc[3], const double velc[3], const double rotc[3], const double omegac[3], double t, double M[3], double *Thrust);
+static void controller(const double posc[3], const double velc[3], const double rotc[3],
+                const double omegac[3], double t, double M[3], double *Thrust)
 {
+  double b3[3];
+  double c2[3];
+  double tau_a[3];
+  double b1[3];
+  double controld[2];
+  double Rd[9];
+  double b_omegac[3];
+  double R[9];
+  double b_b1[3];
+  int i;
+  double dv0[3];
+  double omega_curr[3];
+  double omega_des[3];
+  int i0;
+  double b_velc[3];
+  double Fa[3];
+  double b_R[9];
+  double dv1[3];
+  double dv2[3];
+  double b_c2[3];
+  double dv3[9];
+  double acc_net[3];
+  double y;
+  double c_c2[3];
+  static const double dv4[3] = { 0.0, 0.0, 9.81 };
 
-	/*
-	 * The PX4 architecture provides a mixer outside of the controller.
-	 * The mixer is fed with a default vector of actuator controls, representing
-	 * moments applied to the vehicle frame. This vector
-	 * is structured as:
-	 *
-	 * Control Group 0 (attitude):
-	 *
-	 *    0  -  roll   (-1..+1)
-	 *    1  -  pitch  (-1..+1)
-	 *    2  -  yaw    (-1..+1)
-	 *    3  -  thrust ( 0..+1)
-	 *    4  -  flaps  (-1..+1)
-	 *    ...
-	 *
-	 * Control Group 1 (payloads / special):
-	 *
-	 *    ...
-	 */
+  static const signed char a[9] = { 50, 0, 0, 0, 6, 0, 0, 0, 5 };
 
-	/*
-	 * Calculate roll error and apply P gain
-	 */
+  static const signed char b_a[9] = { 5, 0, 0, 0, 5, 0, 0, 0, 50 };
 
-	matrix::Eulerf att_euler = matrix::Quatf(att->q);
-	matrix::Eulerf att_sp_euler = matrix::Quatf(att_sp->q_d);
+  double b_Rd[9];
+  double c_R[9];
+  double erm[9];
+  int i1;
+  double dv5[3];
+  double c_velc[3];
+  double b_erm[3];
+  double dv6[3];
+  double b_omega_curr[3];
+  double d_c2[3];
+  static const double c_a[9] = { 1.86, 0.0, 0.0, 0.0, 2.031, 0.0, 0.0, 0.0,
+    3.617 };
 
-	float roll_err = att_euler.phi() - att_sp_euler.phi();
-	actuators->control[0] = roll_err * p.roll_p;
+  static const signed char d_a[9] = { 3, 0, 0, 0, 100, 0, 0, 0, 5 };
 
-	/*
-	 * Calculate pitch error and apply P gain
-	 */
-	float pitch_err = att_euler.theta() - att_sp_euler.theta();
-	actuators->control[1] = pitch_err * p.pitch_p;
+  static const short e_a[9] = { 5, 0, 0, 0, 1500, 0, 0, 0, 1 };
+
+  /* desired inputs:[xd yd zd xd_dot yd_dot zd_dot phid thetad psid phidotd thetadotd psidotd ud(1)---Tfwd */
+  /* ud(2)---Mfwd */
+  time_trajj(t, b3, c2, tau_a, b1, controld);
+
+  /* kg */
+  Rd[0] = 1.0;
+  Rd[3] = 0.0;
+  Rd[6] = -sinf(rotc[1]);  //understood sinf from controlmath.cpp in position control 
+  Rd[1] = 0.0;
+  Rd[4] = cosf(rotc[2]);
+  Rd[7] = cosf(rotc[1]) * sinf(rotc[2]);
+  Rd[2] = 0.0;
+  Rd[5] = -sinf(rotc[2]);
+  Rd[8] = cosf(rotc[1]) * cosf(rotc[2]);
+  b_omegac[0] = omegac[2];
+  b_omegac[1] = omegac[1];
+  b_omegac[2] = omegac[0];
+  R[0] = 1.0;
+  R[3] = 0.0;
+  R[6] = -sinf(tau_a[1]);
+  R[1] = 0.0;
+  R[4] = cosf(tau_a[2]);
+  R[7] = cosf(tau_a[1]) * sinf(tau_a[2]);
+  R[2] = 0.0;
+  R[5] = -sinf(tau_a[2]);
+  R[8] = cosf(tau_a[1]) * cosf(tau_a[2]);
+  b_b1[0] = b1[2];
+  b_b1[1] = b1[1];
+  b_b1[2] = b1[0];
+  for (i = 0; i < 3; i++) {
+    omega_curr[i] = 0.0;
+    omega_des[i] = 0.0;
+    for (i0 = 0; i0 < 3; i0++) {
+      omega_curr[i] += Rd[i + 3 * i0] * b_omegac[i0];
+      omega_des[i] += R[i + 3 * i0] * b_b1[i0];
+    }
+  }
+
+  dv0[0] = 0.0;
+  dv0[1] = rotc[1];
+  dv0[2] = 0.0;
+  b_velc[0] = velc[0];
+  b_velc[1] = 0.0;
+  b_velc[2] = velc[2];
+  AeroFEst(dv0, b_velc, omega_curr, Fa);
+  b_R[0] = cosf(tau_a[1]) * cosf(tau_a[0]);
+  b_R[3] = -cosf(tau_a[2]) * sinf(tau_a[0]) + sinf(tau_a[2]) * sinf(tau_a[1]) * cosf
+    (tau_a[0]);
+  b_R[6] = sinf(tau_a[2]) * sinf(tau_a[0]) + cosf(tau_a[2]) * sinf(tau_a[1]) * cosf
+    (tau_a[0]);
+  b_R[1] = cosf(tau_a[1]) * sinf(tau_a[0]);
+  b_R[4] = cosf(tau_a[2]) * cosf(tau_a[0]) + sinf(tau_a[2]) * sinf(tau_a[1]) * sinf
+    (tau_a[0]);
+  b_R[7] = -sinf(tau_a[2]) * cosf(tau_a[0]) + cosf(tau_a[2]) * sinf(tau_a[1]) * sinf
+    (tau_a[0]);
+  b_R[2] = -sinf(tau_a[1]);
+  b_R[5] = sinf(tau_a[2]) * cosf(tau_a[1]);
+  b_R[8] = cosf(tau_a[2]) * cosf(tau_a[1]);
+  dv1[0] = 0.0;
+  dv1[1] = 0.0;
+  dv1[2] = controld[0];
+  dv2[0] = 0.0;
+  dv2[1] = 0.0;
+  dv2[2] = b3[2] - posc[2];
+  b_c2[0] = c2[0] - velc[0];
+  b_c2[1] = -velc[1];
+  b_c2[2] = c2[2] - velc[2];
+  dv3[0] = cosf(rotc[1]) * cosf(rotc[0]);
+  dv3[3] = -cosf(rotc[2]) * sinf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * cosf
+    (rotc[0]);
+  dv3[6] = sinf(rotc[2]) * sinf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * cosf(rotc
+    [0]);
+  dv3[1] = cosf(rotc[1]) * sinf(rotc[0]);
+  dv3[4] = cosf(rotc[2]) * cosf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * sinf(rotc
+    [0]);
+  dv3[7] = -sinf(rotc[2]) * cosf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * sinf
+    (rotc[0]);
+  dv3[2] = -sinf(rotc[1]);
+  dv3[5] = sinf(rotc[2]) * cosf(rotc[1]);
+  dv3[8] = cosf(rotc[2]) * cosf(rotc[1]);
+  for (i = 0; i < 3; i++) {
+    y = 0.0;
+    for (i0 = 0; i0 < 3; i0++) {
+      y += b_R[i + 3 * i0] * dv1[i0];
+    }
+
+    b_b1[i] = y / 12.0;
+    b_velc[i] = 0.0;
+    y = 0.0;
+    for (i0 = 0; i0 < 3; i0++) {
+      y += (double)a[i + 3 * i0] * b_c2[i0];
+      b_velc[i] += (double)b_a[i + 3 * i0] * dv2[i0];
+    }
+
+    dv0[i] = ((b_b1[i] + b_velc[i]) + y) + dv4[i];
+    y = 0.0;
+    for (i0 = 0; i0 < 3; i0++) {
+      y += dv3[i + 3 * i0] * Fa[i0];
+    }
+
+    b_omegac[i] = y / 12.0;
+    acc_net[i] = dv0[i] - b_omegac[i];
+  }
+
+  /*  acc_net */
+  /*  calculation of current euler angles */
+  y = norm(acc_net);
+  for (i = 0; i < 3; i++) {
+    b3[i] = acc_net[i] / y;
+  }
+
+  c2[0] = -sinf(tau_a[0]);
+  c2[1] = cosf(tau_a[0]);
+  c_c2[0] = c2[1] * b3[2] - 0.0 * b3[1];
+  c_c2[1] = 0.0 * b3[0] - c2[0] * b3[2];
+  c_c2[2] = c2[0] * b3[1] - c2[1] * b3[0];
+  y = norm(c_c2);
+  b1[0] = (c2[1] * b3[2] - 0.0 * b3[1]) / y;
+  b1[1] = (0.0 * b3[0] - c2[0] * b3[2]) / y;
+  b1[2] = (c2[0] * b3[1] - c2[1] * b3[0]) / y;
+  b_Rd[3] = b3[1] * b1[2] - b3[2] * b1[1];
+  b_Rd[4] = b3[2] * b1[0] - b3[0] * b1[2];
+  b_Rd[5] = b3[0] * b1[1] - b3[1] * b1[0];
+  for (i = 0; i < 3; i++) {
+    b_Rd[i] = b1[i];
+    b_Rd[6 + i] = b3[i];
+  }
+
+  /* thrust control input */
+  /* flag=sign([0 0 1]*Rb'*acc_net); */
+  *Thrust = 12.0 * norm(acc_net);
+  c_R[0] = cosf(rotc[1]) * cosf(rotc[0]);
+  c_R[3] = -cosf(rotc[2]) * sinf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * cosf
+    (rotc[0]);
+  c_R[6] = sinf(rotc[2]) * sinf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * cosf(rotc
+    [0]);
+  c_R[1] = cosf(rotc[1]) * sinf(rotc[0]);
+  c_R[4] = cosf(rotc[2]) * cosf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * sinf(rotc
+    [0]);
+  c_R[7] = -sinf(rotc[2]) * cosf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * sinf
+    (rotc[0]);
+  c_R[2] = -sinf(rotc[1]);
+  c_R[5] = sinf(rotc[2]) * cosf(rotc[1]);
+  c_R[8] = cosf(rotc[2]) * cosf(rotc[1]);
+  for (i = 0; i < 3; i++) {
+    for (i0 = 0; i0 < 3; i0++) {
+      Rd[i + 3 * i0] = 0.0;
+      R[i + 3 * i0] = 0.0;
+      for (i1 = 0; i1 < 3; i1++) {
+        Rd[i + 3 * i0] += b_Rd[i1 + 3 * i] * c_R[i1 + 3 * i0];
+        R[i + 3 * i0] += c_R[i1 + 3 * i] * b_Rd[i1 + 3 * i0];
+      }
+    }
+  }
+
+  for (i = 0; i < 3; i++) {
+    y = 0.0;
+    for (i0 = 0; i0 < 3; i0++) {
+      erm[i0 + 3 * i] = 0.5 * (Rd[i0 + 3 * i] - R[i0 + 3 * i]);
+      b_R[i + 3 * i0] = 0.0;
+      for (i1 = 0; i1 < 3; i1++) {
+        b_R[i + 3 * i0] += c_R[i1 + 3 * i] * b_Rd[i1 + 3 * i0];
+      }
+
+      y += b_R[i + 3 * i0] * omega_des[i0];
+    }
+
+    c2[i] = omega_curr[i] - y;
+  }
+
+  dv5[0] = 0.0;
+  dv5[1] = rotc[1];
+  dv5[2] = 0.0;
+  c_velc[0] = velc[0];
+  c_velc[1] = 0.0;
+  c_velc[2] = velc[2];
+  AeroMEst(dv5, c_velc, omega_curr, Fa, tau_a);
+  b_erm[0] = erm[5];
+  b_erm[1] = erm[6];
+  b_erm[2] = erm[1];
+  dv6[0] = 0.0;
+  dv6[1] = controld[1];
+  dv6[2] = 0.0;
+  for (i = 0; i < 3; i++) {
+    b1[i] = 0.0;
+    b3[i] = 0.0;
+    b_velc[i] = 0.0;
+    y = 0.0;
+    for (i0 = 0; i0 < 3; i0++) {
+      b1[i] += c_a[i + 3 * i0] * omega_curr[i0];
+      R[i + 3 * i0] = 0.0;
+      for (i1 = 0; i1 < 3; i1++) {
+        R[i + 3 * i0] += c_R[i1 + 3 * i] * b_Rd[i1 + 3 * i0];
+      }
+
+      b3[i] += R[i + 3 * i0] * omega_des[i0];
+      b_velc[i] += (double)d_a[i + 3 * i0] * b_erm[i0];
+      y += (double)e_a[i + 3 * i0] * c2[i0];
+    }
+
+    dv0[i] = (dv6[i] - b_velc[i]) - y;
+  }
+
+  b_omega_curr[0] = omega_curr[1] * b1[2] - omega_curr[2] * b1[1];
+  b_omega_curr[1] = omega_curr[2] * b1[0] - omega_curr[0] * b1[2];
+  b_omega_curr[2] = omega_curr[0] * b1[1] - omega_curr[1] * b1[0];
+  d_c2[0] = c2[1] * b3[2] - c2[2] * b3[1];
+  d_c2[1] = c2[2] * b3[0] - c2[0] * b3[2];
+  d_c2[2] = c2[0] * b3[1] - c2[1] * b3[0];
+  for (i = 0; i < 3; i++) {
+    y = 0.0;
+    for (i0 = 0; i0 < 3; i0++) {
+      y += c_a[i + 3 * i0] * d_c2[i0];
+    }
+
+    M[i] = ((dv0[i] + b_omega_curr[i]) - y) - tau_a[i];
+  }
+
+  /* moment input */
 }
 
-void control_heading(const struct vehicle_global_position_s *pos, const struct position_setpoint_s *sp,
-		     const struct vehicle_attitude_s *att, struct vehicle_attitude_setpoint_s *att_sp)
-{
+/*
+ * File trailer for controller.c
+ *
+ * [EOF]
+ */
 
-	/*
-	 * Calculate heading error of current position to desired position
-	 */
-
-	float bearing = get_bearing_to_next_waypoint(pos->lat, pos->lon, sp->lat, sp->lon);
-
-	matrix::Eulerf att_euler = matrix::Quatf(att->q);
-
-	/* calculate heading error */
-	float yaw_err = att_euler.psi() - bearing;
-	/* apply control gain */
-	float roll_body = yaw_err * p.hdng_p;
-
-	/* limit output, this commonly is a tuning parameter, too */
-	if (roll_body < -0.6f) {
-		roll_body = -0.6f;
-
-	} else if (att_sp->roll_body > 0.6f) {
-		roll_body = 0.6f;
-	}
-
-	matrix::Eulerf att_spe(roll_body, 0, bearing);
-	matrix::Quatf(att_spe).copyTo(att_sp->q_d);
-}
-
-int parameters_init(struct param_handles *handles)
-{
-	/* PID parameters */
-	handles->hdng_p 	=	param_find("EXFW_HDNG_P");
-	handles->roll_p 	=	param_find("EXFW_ROLL_P");
-	handles->pitch_p 	=	param_find("EXFW_PITCH_P");
-
-	return 0;
-}
-
-int parameters_update(const struct param_handles *handles, struct params *parameters)
-{
-	param_get(handles->hdng_p, &(parameters->hdng_p));
-	param_get(handles->roll_p, &(parameters->roll_p));
-	param_get(handles->pitch_p, &(parameters->pitch_p));
-
-	return 0;
-}
+/*controller produces the control inputs thrust and moments and gets value from time traj as well as local position*/
 
 
-/* Main Thread */
+//unsigned
 int fixedwing_control_thread_main(int argc, char *argv[])
 {
-	/* read arguments */
-	bool verbose = false;
 
-	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0) {
-			verbose = true;
-		}
-	}
-
-	/* welcome user (warnx prints a line, including an appended\n, with variable arguments */
-	warnx("[example fixedwing control] started");
-
-	/* initialize parameters, first the handles, then the values */
-	parameters_init(&ph);
-	parameters_update(&ph, &p);
-
-
-	/*
-	 * PX4 uses a publish/subscribe design pattern to enable
-	 * multi-threaded communication.
-	 *
-	 * The most elegant aspect of this is that controllers and
-	 * other processes can either 'react' to new data, or run
-	 * at their own pace.
-	 *
-	 * PX4 developer guide:
-	 * https://pixhawk.ethz.ch/px4/dev/shared_object_communication
-	 *
-	 * Wikipedia description:
-	 * http://en.wikipedia.org/wiki/Publish–subscribe_pattern
-	 *
-	 */
-
-
-
-
-	/*
-	 * Declare and safely initialize all structs to zero.
-	 *
-	 * These structs contain the system state and things
-	 * like attitude, position, the current waypoint, etc.
-	 */
-	struct vehicle_attitude_s att;
-	memset(&att, 0, sizeof(att));
-	struct vehicle_attitude_setpoint_s att_sp;
-	memset(&att_sp, 0, sizeof(att_sp));
-	struct vehicle_rates_setpoint_s rates_sp;
-	memset(&rates_sp, 0, sizeof(rates_sp));
-	struct vehicle_global_position_s global_pos;
-	memset(&global_pos, 0, sizeof(global_pos));
-	struct manual_control_setpoint_s manual_sp;
-	memset(&manual_sp, 0, sizeof(manual_sp));
-	struct vehicle_status_s vstatus;
-	memset(&vstatus, 0, sizeof(vstatus));
-	struct position_setpoint_s global_sp;
-	memset(&global_sp, 0, sizeof(global_sp));
+	//struct vehicle_local_position_s _local_pos_s;
+	memset(&_local_pos, 0, sizeof(_local_pos));
+	//struct vehicle_attitude_s _v_att_s;
+	memset(&_v_att, 0, sizeof(_v_att));
+	//struct vehicle_angular_velocity_s angular_velocity_s;
+	memset(&angular_velocity, 0, sizeof(angular_velocity));
+	
 
 	/* output structs - this is what is sent to the mixer */
-	struct actuator_controls_s actuators;
+	//struct actuator_controls_s actuators_p;
 	memset(&actuators, 0, sizeof(actuators));
 
 
 	/* publish actuator controls with zero values */
-	for (unsigned i = 0; i < actuator_controls_s::NUM_ACTUATOR_CONTROLS; i++) {
+
+	for (int i = 0; i < actuator_controls_s::NUM_ACTUATOR_CONTROLS; i++) {
 		actuators.control[i] = 0.0f;
 	}
 
-	/*
+
+
+/*
 	 * Advertise that this controller will publish actuator
-	 * control values and the rate setpoint
+	 * control values 
 	 */
 	orb_advert_t actuator_pub = orb_advertise(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, &actuators);
-	orb_advert_t rates_pub = orb_advertise(ORB_ID(vehicle_rates_setpoint), &rates_sp);
-
+	
 	/* subscribe to topics. */
 	int att_sub = orb_subscribe(ORB_ID(vehicle_attitude));
+	//int local_sub = orb_subscribe(ORB_ID(vehicle_local_position));
+	//int omega_sub = orb_subscribe(ORB_ID(vehicle_angular_velocity));
 	int global_pos_sub = orb_subscribe(ORB_ID(vehicle_global_position));
-	int manual_sp_sub = orb_subscribe(ORB_ID(manual_control_setpoint));
-	int vstatus_sub = orb_subscribe(ORB_ID(vehicle_status));
-	int global_sp_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
-
-	uORB::Subscription parameter_update_sub{ORB_ID(parameter_update)};
 
 	/* Setup of loop */
 
@@ -348,15 +504,6 @@ int fixedwing_control_thread_main(int argc, char *argv[])
 			/* no return value = nothing changed for 500 ms, ignore */
 		} else {
 
-			// check for parameter updates
-			if (parameter_update_sub.updated()) {
-				// clear update
-				parameter_update_s pupdate;
-				parameter_update_sub.copy(&pupdate);
-
-				// if a param update occured, re-read our parameters
-				parameters_update(&ph, &p);
-			}
 
 			/* only run controller if attitude changed */
 			if (fds[0].revents & POLLIN) {
@@ -365,38 +512,33 @@ int fixedwing_control_thread_main(int argc, char *argv[])
 				/* Check if there is a new position measurement or position setpoint */
 				bool pos_updated;
 				orb_check(global_pos_sub, &pos_updated);
-				bool global_sp_updated;
-				orb_check(global_sp_sub, &global_sp_updated);
-				bool manual_sp_updated;
-				orb_check(manual_sp_sub, &manual_sp_updated);
 
-				/* get a local copy of attitude */
-				orb_copy(ORB_ID(vehicle_attitude), att_sub, &att);
+				// get a local copy of attitude 
+				//orb_copy(ORB_ID(vehicle_attitude), att_sub, &att);
 
-				if (global_sp_updated) {
-					struct position_setpoint_triplet_s triplet;
-					orb_copy(ORB_ID(position_setpoint_triplet), global_sp_sub, &triplet);
-					memcpy(&global_sp, &triplet.current, sizeof(global_sp));
+				if (pos_updated) {
+
+					double t=_local_pos.timestamp;
+
+					const double posc[3] = {_local_pos.x, _local_pos.y, _local_pos.z};
+					const double velc[3] = {_local_pos.vx, _local_pos.vy, _local_pos.vz};
+					const double rotc[3]= 										{ Eulerf(Quatf(_v_att.q)).psi(),Eulerf(Quatf(_v_att.q)).theta(),Eulerf(Quatf(_v_att.q)).phi()};
+					
+					const double omegac[3]={angular_velocity.xyz[0],angular_velocity.xyz[1],angular_velocity.xyz[2]};
+					double Thrust;
+					double M[3];
+					
+					controller(posc, velc, rotc, omegac, t, M, &Thrust);
+					//controller(posc, velc, rotc, omegac, t, M, Thrust);
+					
+					actuators.control[0]=M[0];
+					actuators.control[1]=M[1];
+					actuators.control[2]=M[2];
+					actuators.control[3]=Thrust;
+
 				}
 
-				if (manual_sp_updated)
-					/* get the RC (or otherwise user based) input */
-				{
-					orb_copy(ORB_ID(manual_control_setpoint), manual_sp_sub, &manual_sp);
-				}
-
-				/* check if the throttle was ever more than 50% - go later only to failsafe if yes */
-				if (PX4_ISFINITE(manual_sp.z) &&
-				    (manual_sp.z >= 0.6f) &&
-				    (manual_sp.z <= 1.0f)) {
-				}
-
-				/* get the system status and the flight mode we're in */
-				orb_copy(ORB_ID(vehicle_status), vstatus_sub, &vstatus);
-
-				/* publish rates */
-				orb_publish(ORB_ID(vehicle_rates_setpoint), rates_pub, &rates_sp);
-
+				
 				/* sanity check and publish actuator outputs */
 				if (PX4_ISFINITE(actuators.control[0]) &&
 				    PX4_ISFINITE(actuators.control[1]) &&
@@ -404,9 +546,9 @@ int fixedwing_control_thread_main(int argc, char *argv[])
 				    PX4_ISFINITE(actuators.control[3])) {
 					orb_publish(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, actuator_pub, &actuators);
 
-					if (verbose) {
+					/*if (verbose) {
 						warnx("published");
-					}
+					}*/
 				}
 			}
 		}
@@ -492,3 +634,4 @@ int ex_fixedwing_control_main(int argc, char *argv[])
 	usage("unrecognized command");
 	return 0;
 }
+

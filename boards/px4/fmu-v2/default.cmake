@@ -76,8 +76,8 @@ px4_add_board(
 		ekf2
 		#esc_battery
 		#events
-		fw_att_control
-		fw_pos_control_l1
+		#fw_att_control
+		#fw_pos_control_l1
 		land_detector
 		#landing_target_estimator
 		load_mon
@@ -85,7 +85,7 @@ px4_add_board(
 		logger
 		mavlink
 		mc_att_control
-		mc_hover_thrust_estimator
+		#mc_hover_thrust_estimator
 		mc_pos_control
 		mc_rate_control
 		#micrortps_bridge
@@ -125,7 +125,7 @@ px4_add_board(
 		ver
 		#work_queue
 	EXAMPLES
-		#fixedwing_control # Tutorial code from https://px4.io/dev/example_fixedwing_control
+		fixedwing_control # Tutorial code from https://px4.io/dev/example_fixedwing_control
 		#hello
 		#hwtest # Hardware test
 		#matlab_csv_serial

@@ -80,6 +80,7 @@ set(models none shell
 	plane plane_cam plane_catapult plane_lidar
 	standard_vtol tailsitter tiltrotor
 	rover r1_rover boat
+	biplane
 	uuv_hippocampus)
 set(worlds none empty baylands ksql_airport mcmillan_airfield sonoma_raceway warehouse)
 set(all_posix_vmd_make_targets)

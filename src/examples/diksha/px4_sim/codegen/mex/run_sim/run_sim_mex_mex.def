@@ -1,0 +1,8 @@
+LIBRARY run_sim_mex.mexw64
+EXPORTS
+mexFunction
+emlrtMexFcnProperties
+run_sim
+run_sim_initialize
+run_sim_terminate
+run_sim_atexit

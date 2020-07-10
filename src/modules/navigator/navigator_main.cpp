@@ -63,6 +63,7 @@
  *
  * @ingroup apps
  */
+
 extern "C" __EXPORT int navigator_main(int argc, char *argv[]);
 
 #define GEOFENCE_CHECK_INTERVAL 200000

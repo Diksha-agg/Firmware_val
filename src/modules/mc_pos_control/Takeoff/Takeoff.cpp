@@ -38,6 +38,8 @@
 #include "Takeoff.hpp"
 #include <mathlib/mathlib.h>
 
+
+
 void Takeoff::generateInitialRampValue(const float hover_thrust, float velocity_p_gain)
 {
 	velocity_p_gain = math::max(velocity_p_gain, 0.01f);
