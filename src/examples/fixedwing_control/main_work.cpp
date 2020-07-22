@@ -135,7 +135,7 @@
 #include "controller_types.h"
 #include <uORB/uORB.h>
 #include <uORB/topics/debug_key_value.h>
-#include <uORB/topics/debug_vect.h>
+
 using namespace matrix;
 
 vehicle_local_position_s _local_pos{};			/**< vehicle local position */
@@ -148,7 +148,6 @@ vehicle_rates_setpoint_s _rate_set{};
 struct debug_key_value_s dbg{};
 vehicle_status_s status{};
 vehicle_command_s vcom{};
-struct debug_vect_s dbg_vect;
 
 
 extern "C" __EXPORT int ex_fixedwing_control_main(int argc, char *argv[]);
@@ -171,7 +170,6 @@ static void controller(const double posc[3], const double velc[3], const double 
 static void controller(const double posc[3], const double velc[3], const double rotc[3],
                 const double omegac[3], double t, double M[3], double *Thrust)
 {
-  //int flag;
   double b3[3];
   double posd[3];
   double c2[3];
@@ -192,38 +190,36 @@ static void controller(const double posc[3], const double velc[3], const double 
   int i0;
   double b_velc[3];
   double Fa[3];
-  double b_R[9];		//R multiplied with [0 0 u(1)]t
+  double b_R[9];
   double dv1[3];
   double dv2[3];
   double b_c2[3];
-  double dv3[9];		//Rb multiplied by Fa
+  double dv3[9];
   double acc_net[3];
   double y;
   double c_c2[3];
   static const double dv4[3] = { 0.0, 0.0, 9.81 };
 
-  static const double a[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 0.1 };  // kv derivative v
+  static const signed char a[9] = { 5, 0, 0, 0, 6, 0, 0, 0, 5 };  // kv derivative v
 
-  static const double b_a[9] = { 1, 0, 0, 0, 1, 0, 0, 0, 0.1 }; // kp proportional x
+  static const signed char b_a[9] = { 5, 0, 0, 0, 5, 0, 0, 0, 5 }; // kp proportional x
 
   double b_Rd[9];
-  double c_R[9];		//R used in angle cal
+  double c_R[9];
   double erm[9];
   int i1;
-  double acc;
   double dv5[3];
   double c_velc[3];
   double b_erm[3];
   double dv6[3];
   double b_omega_curr[3];
   double d_c2[3];
-
   //static const double c_a[9] = { 1.86, 0.0, 0.0, 0.0, 2.031, 0.0, 0.0, 0.0, 3.617 };
          
-  static const double c_a[9] = { 0.887921, 0.00073908, -7.96652e-07, 0.00073908, 0.552353, 2.99865e-06, -7.96652e-07, 2.99865e-06, 1.35587 };//j
-  static const double d_a[9] = { 3, 0, 0, 0, 0.1, 0, 0, 0, 3 }; // kr error in rotation
+  static const double c_a[9] = { 0.887921, 0.00073908, -7.96652e-07, 0.00073908, 0.552353, 2.99865e-06, -7.96652e-07, 2.99865e-06, 1.35587 };
+  static const signed char d_a[9] = { 3, 0, 0, 0, 1, 0, 0, 0, 5 }; // kr error in rotation
 
-  static const double e_a[9] = { 1 , 0, 0, 0, 1 , 0, 0, 0, 1  }; //kw error in omega
+  static const short e_a[9] = { 5, 0, 0, 0, 15, 0, 0, 0, 1 }; //kw error in omega
 
   /* desired inputs:[xd yd zd xd_dot yd_dot zd_dot phid thetad psid phidotd thetadotd psidotd ud(1)---Tfwd */
   /* ud(2)---Mfwd */
@@ -250,11 +246,11 @@ static void controller(const double posc[3], const double velc[3], const double 
   Rd[3] = 0.0;
   Rd[6] = -sinf(rotc[1]);  //understood sinf from controlmath.cpp in position control 
   Rd[1] = 0.0;
-  Rd[4] = cosf(rotc[0]);
-  Rd[7] = cosf(rotc[1]) * sinf(rotc[0]);
+  Rd[4] = cosf(rotc[2]);
+  Rd[7] = cosf(rotc[1]) * sinf(rotc[2]);
   Rd[2] = 0.0;
-  Rd[5] = -sinf(rotc[0]);
-  Rd[8] = cosf(rotc[1]) * cosf(rotc[0]);
+  Rd[5] = -sinf(rotc[2]);
+  Rd[8] = cosf(rotc[1]) * cosf(rotc[2]);
   b_omegac[0] = omegac[2];
   b_omegac[1] = omegac[1];
   b_omegac[2] = omegac[0];
@@ -262,19 +258,19 @@ static void controller(const double posc[3], const double velc[3], const double 
   R[3] = 0.0;
   R[6] = -sinf(rotd[1]);
   R[1] = 0.0;
-  R[4] = cosf(rotd[0]);
-  R[7] = cosf(rotd[1]) * sinf(rotd[0]);
+  R[4] = cosf(rotd[2]);
+  R[7] = cosf(rotd[1]) * sinf(rotd[2]);
   R[2] = 0.0;
-  R[5] = -sinf(rotd[0]);
-  R[8] = cosf(rotd[1]) * cosf(rotd[0]);
-  b_b1[0] = b1[0];
+  R[5] = -sinf(rotd[2]);
+  R[8] = cosf(rotd[1]) * cosf(rotd[2]);
+  b_b1[0] = b1[2];
   b_b1[1] = b1[1];
-  b_b1[2] = b1[2];
+  b_b1[2] = b1[0];
   for (i = 0; i < 3; i++) {
     omega_curr[i] = omegac[i];
     omega_des[i] = 0.0;
     for (i0 = 0; i0 < 3; i0++) {
-      //omega_curr[i] += Rd[i + 3 * i0] * b_omegac[i0];				//omaga des in body frame
+      //omega_curr[i] += Rd[i + 3 * i0] * b_omegac[i0];
       omega_des[i] += R[i + 3 * i0] * b_b1[i0];
     }
   }
@@ -285,18 +281,19 @@ static void controller(const double posc[3], const double velc[3], const double 
   b_velc[1] = 0.0;
   b_velc[2] = velc[2];
   AeroFEst(dv0, b_velc, omega_curr, Fa);
-  Fa[0]=0;
-  Fa[1]=0;
-  Fa[2]=0;
-  b_R[0] = cosf(rotd[1]) * cosf(rotd[2]);
-  b_R[3] = -cosf(rotd[0]) * sinf(rotd[2]) + sinf(rotd[1]) * sinf(rotd[0]) * cosf(rotd[2]);
-  b_R[6] = sinf(rotd[2]) * sinf(rotd[0]) + cosf(rotd[2]) * sinf(rotd[1]) * cosf(rotd[0]);
-  b_R[1] = cosf(rotd[1]) * sinf(rotd[2]);
-  b_R[4] = cosf(rotd[2]) * cosf(rotd[0]) + sinf(rotd[2]) * sinf(rotd[1]) * sinf(rotd[0]);
-  b_R[7] = -sinf(rotd[0]) * cosf(rotd[2]) + cosf(rotd[0]) * sinf(rotd[1]) * sinf(rotd[2]);
+  b_R[0] = cosf(rotd[1]) * cosf(rotd[0]);
+  b_R[3] = -cosf(rotd[2]) * sinf(rotd[0]) + sinf(rotd[2]) * sinf(rotd[1]) * cosf
+    (rotd[0]);
+  b_R[6] = sinf(rotd[2]) * sinf(rotd[0]) + cosf(rotd[2]) * sinf(rotd[1]) * cosf
+    (rotd[0]);
+  b_R[1] = cosf(rotd[1]) * sinf(rotd[0]);
+  b_R[4] = cosf(rotd[2]) * cosf(rotd[0]) + sinf(rotd[2]) * sinf(rotd[1]) * sinf
+    (rotd[0]);
+  b_R[7] = -sinf(rotd[2]) * cosf(rotd[0]) + cosf(rotd[2]) * sinf(rotd[1]) * sinf
+    (rotd[0]);
   b_R[2] = -sinf(rotd[1]);
-  b_R[5] = sinf(rotd[0]) * cosf(rotd[1]);
-  b_R[8] = cosf(rotd[0]) * cosf(rotd[1]);
+  b_R[5] = sinf(rotd[2]) * cosf(rotd[1]);
+  b_R[8] = cosf(rotd[2]) * cosf(rotd[1]);
   dv1[0] = 0.0;
   dv1[1] = 0.0;
   dv1[2] = controld[0];
@@ -304,17 +301,21 @@ static void controller(const double posc[3], const double velc[3], const double 
   dv2[1] = 0.0;
   dv2[2] = posd[2] - posc[2];
   b_c2[0] = veld[0] - velc[0];
-  b_c2[1] = veld[1] - velc[1];
+  b_c2[1] = -velc[1];
   b_c2[2] = veld[2] - velc[2];
-  dv3[0] = cosf(rotc[1]) * cosf(rotc[2]);
-  dv3[3] = -cosf(rotc[0]) * sinf(rotc[2]) + sinf(rotc[1]) * sinf(rotc[0]) * cosf(rotc[2]);
-  dv3[6] = sinf(rotc[2]) * sinf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * cosf(rotc[0]);
-  dv3[1] = cosf(rotc[1]) * sinf(rotc[2]);
-  dv3[4] = cosf(rotc[2]) * cosf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * sinf(rotc[0]);
-  dv3[7] = -sinf(rotc[0]) * cosf(rotc[2]) + cosf(rotc[0]) * sinf(rotc[1]) * sinf(rotc[2]);
+  dv3[0] = cosf(rotc[1]) * cosf(rotc[0]);
+  dv3[3] = -cosf(rotc[2]) * sinf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * cosf
+    (rotc[0]);
+  dv3[6] = sinf(rotc[2]) * sinf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * cosf(rotc
+    [0]);
+  dv3[1] = cosf(rotc[1]) * sinf(rotc[0]);
+  dv3[4] = cosf(rotc[2]) * cosf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * sinf(rotc
+    [0]);
+  dv3[7] = -sinf(rotc[2]) * cosf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * sinf
+    (rotc[0]);
   dv3[2] = -sinf(rotc[1]);
-  dv3[5] = sinf(rotc[0]) * cosf(rotc[1]);
-  dv3[8] = cosf(rotc[0]) * cosf(rotc[1]);
+  dv3[5] = sinf(rotc[2]) * cosf(rotc[1]);
+  dv3[8] = cosf(rotc[2]) * cosf(rotc[1]);
   for (i = 0; i < 3; i++) {
     y = 0.0;
     for (i0 = 0; i0 < 3; i0++) {
@@ -329,7 +330,7 @@ static void controller(const double posc[3], const double velc[3], const double 
       b_velc[i] += (double)b_a[i + 3 * i0] * dv2[i0];
     }
 
-    dv0[i] = ((b_b1[i] + b_velc[i]) + y)+ dv4[i] ;
+    dv0[i] = ((b_b1[i] + b_velc[i]) + y) + dv4[i];
     y = 0.0;
     for (i0 = 0; i0 < 3; i0++) {
       y += dv3[i + 3 * i0] * Fa[i0];
@@ -348,58 +349,37 @@ static void controller(const double posc[3], const double velc[3], const double 
 
   c2[0] = -sinf(rotd[0]);
   c2[1] = cosf(rotd[0]);
-  c2[2] = 0;
-  //c_c2[0] = c2[1] * b3[2] - 0.0 * b3[1];		//c2xb3
-  //c_c2[1] = 0.0 * b3[0] - c2[0] * b3[2];
-  //c_c2[2] = c2[0] * b3[1] - c2[1] * b3[0];
-  //y = norm(c_c2);
-  //b1[0] = (c2[1] * b3[2] - 0.0 * b3[1]) / y;
-  //b1[1] = (0.0 * b3[0] - c2[0] * b3[2]) / y;
-  //b1[2] = (c2[0] * b3[1] - c2[1] * b3[0]) / y;
-  b1[0]=c2[0];
-  b1[1]=c2[1];
-  b1[2]=c2[2];
-  c_c2[0] = b3[2] * b1[1] - b3[1] * b1[2];		//b1xb3
-  c_c2[1] = b1[2] * b3[0] - b1[0] * b3[2];
-  c_c2[2] = b1[0] * b3[1] - b1[1] * b3[0];
+  c_c2[0] = c2[1] * b3[2] - 0.0 * b3[1];
+  c_c2[1] = 0.0 * b3[0] - c2[0] * b3[2];
+  c_c2[2] = c2[0] * b3[1] - c2[1] * b3[0];
   y = norm(c_c2);
-  
-  /*b_Rd[3] = b3[1] * b1[2] - b3[2] * b1[1];		//b_Rd[3,4,5] is b2
-  b_Rd[4] = b3[2] * b1[0] - b3[0] * b1[2];		
-  b_Rd[5] = b3[0] * b1[1] - b3[1] * b1[0];*/
-
-  b_Rd[3] = c_c2[0]/y;					//b_Rd[3,4,5] is b2
-  b_Rd[4] = c_c2[1]/y;		
-  b_Rd[5] = c_c2[2]/y;
-
+  b1[0] = (c2[1] * b3[2] - 0.0 * b3[1]) / y;
+  b1[1] = (0.0 * b3[0] - c2[0] * b3[2]) / y;
+  b1[2] = (c2[0] * b3[1] - c2[1] * b3[0]) / y;
+  b_Rd[3] = b3[1] * b1[2] - b3[2] * b1[1];
+  b_Rd[4] = b3[2] * b1[0] - b3[0] * b1[2];
+  b_Rd[5] = b3[0] * b1[1] - b3[1] * b1[0];
   for (i = 0; i < 3; i++) {
     b_Rd[i] = b1[i];
-    b_Rd[6 + i] = b3[i];				//b_Rd is Rd
+    b_Rd[6 + i] = b3[i];
   }
-if (acc_net[2]<0)
-{acc=-acc_net[2];}
-else
-{acc=acc_net[2];}
 
   /* thrust control input */
-   //flag=sign([0 0 1]*Rd'*acc_net);  
- //if (posd[2]>posc[2]){flag =1;}else {flag=-1;}
-   //int flag = signum(posd[2]-posc[2]);
-	//flag=1;
-
-//  *Thrust = BQ_m * norm(acc_net);
- *Thrust = BQ_m * acc;
-
-  c_R[0] = cosf(rotc[1]) * cosf(rotc[2]);							//c_R is R in attitude controller
-  c_R[3] = -cosf(rotc[0]) * sinf(rotc[2]) + sinf(rotc[1]) * sinf(rotc[0]) * cosf(rotc[2]);
-  c_R[6] = sinf(rotc[2]) * sinf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * cosf(rotc[0]);
-  c_R[1] = cosf(rotc[1]) * sinf(rotc[2]);
-  c_R[4] = cosf(rotc[2]) * cosf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * sinf(rotc[0]);
-  c_R[7] = -sinf(rotc[0]) * cosf(rotc[2]) + cosf(rotc[0]) * sinf(rotc[1]) * sinf(rotc[2]);
+  /* flag=sign([0 0 1]*Rb'*acc_net); */
+  *Thrust = BQ_m * norm(acc_net);
+  c_R[0] = cosf(rotc[1]) * cosf(rotc[0]);
+  c_R[3] = -cosf(rotc[2]) * sinf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * cosf
+    (rotc[0]);
+  c_R[6] = sinf(rotc[2]) * sinf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * cosf(rotc
+    [0]);
+  c_R[1] = cosf(rotc[1]) * sinf(rotc[0]);
+  c_R[4] = cosf(rotc[2]) * cosf(rotc[0]) + sinf(rotc[2]) * sinf(rotc[1]) * sinf(rotc
+    [0]);
+  c_R[7] = -sinf(rotc[2]) * cosf(rotc[0]) + cosf(rotc[2]) * sinf(rotc[1]) * sinf
+    (rotc[0]);
   c_R[2] = -sinf(rotc[1]);
-  c_R[5] = sinf(rotc[0]) * cosf(rotc[1]);
-  c_R[8] = cosf(rotc[0]) * cosf(rotc[1]);
-
+  c_R[5] = sinf(rotc[2]) * cosf(rotc[1]);
+  c_R[8] = cosf(rotc[2]) * cosf(rotc[1]);
   for (i = 0; i < 3; i++) {
     for (i0 = 0; i0 < 3; i0++) {
       Rd[i + 3 * i0] = 0.0;
@@ -414,7 +394,7 @@ else
   for (i = 0; i < 3; i++) {
     y = 0.0;
     for (i0 = 0; i0 < 3; i0++) {
-      erm[i0 + 3 * i] = 0.5 * (Rd[i0 + 3 * i] - R[i0 + 3 * i]);		//er=(rdTr-rTrd)v
+      erm[i0 + 3 * i] = 0.5 * (Rd[i0 + 3 * i] - R[i0 + 3 * i]);
       b_R[i + 3 * i0] = 0.0;
       for (i1 = 0; i1 < 3; i1++) {
         b_R[i + 3 * i0] += c_R[i1 + 3 * i] * b_Rd[i1 + 3 * i0];
@@ -423,7 +403,7 @@ else
       y += b_R[i + 3 * i0] * omega_des[i0];
     }
 
-    c2[i] = omega_curr[i] - y;					//ew
+    c2[i] = omega_curr[i] - y;
   }
 
   dv5[0] = 0.0;
@@ -433,7 +413,7 @@ else
   c_velc[1] = 0.0;
   c_velc[2] = velc[2];
   AeroMEst(dv5, c_velc, omega_curr, Fa, tau_a);
-  b_erm[0] = erm[5];						//er
+  b_erm[0] = erm[5];
   b_erm[1] = erm[6];
   b_erm[2] = erm[1];
   dv6[0] = 0.0;
@@ -445,15 +425,15 @@ else
     b_velc[i] = 0.0;
     y = 0.0;
     for (i0 = 0; i0 < 3; i0++) {
-      b1[i] += c_a[i + 3 * i0] * omega_curr[i0];		//c_a is J
+      b1[i] += c_a[i + 3 * i0] * omega_curr[i0];
       R[i + 3 * i0] = 0.0;
       for (i1 = 0; i1 < 3; i1++) {
         R[i + 3 * i0] += c_R[i1 + 3 * i] * b_Rd[i1 + 3 * i0];
       }
 
       b3[i] += R[i + 3 * i0] * omega_des[i0];
-      b_velc[i] += (double)d_a[i + 3 * i0] * b_erm[i0];		//d_a is kr 
-      y += (double)e_a[i + 3 * i0] * c2[i0];			//e_a is kw
+      b_velc[i] += (double)d_a[i + 3 * i0] * b_erm[i0];
+      y += (double)e_a[i + 3 * i0] * c2[i0];
     }
 
     dv0[i] = (dv6[i] - b_velc[i]) - y;
@@ -468,20 +448,11 @@ else
   for (i = 0; i < 3; i++) {
     y = 0.0;
     for (i0 = 0; i0 < 3; i0++) {
-      y += c_a[i + 3 * i0] * d_c2[i0];			//c_a is J
+      y += c_a[i + 3 * i0] * d_c2[i0];
     }
 
-    M[i] = ((dv0[i] + b_omega_curr[i]) - y);
-					/*dbg_vect.x = d_a[0]*b_erm[0];
-					dbg_vect.y = d_a[4]*b_erm[1];
-					dbg_vect.z = d_a[8]*b_erm[1];
-					dbg_vect.timestamp = hrt_absolute_time();*/
-					dbg_vect.x = acc_net[0]/norm(acc_net);
-					dbg_vect.y = acc_net[1]/norm(acc_net);
-					dbg_vect.z = acc_net[2]/norm(acc_net);
-					dbg_vect.timestamp = hrt_absolute_time();
-//dbg.value = M[0];
-//dbg.value = flag;
+    M[i] = ((dv0[i] + b_omega_curr[i]) - y) - tau_a[i];
+
   }
 
   /* moment input */
@@ -556,17 +527,9 @@ int fixedwing_control_thread_main(int argc, char *argv[])
     	int stat = orb_subscribe(ORB_ID(vehicle_status));
 
 strncpy(dbg.key, "velx", 10);
-//strncpy(dbg.key, "vely", 10);
 dbg.value= 0.0f;
 
 	orb_advert_t pub_dbg = orb_advertise(ORB_ID(debug_key_value), &dbg);
-
-	strncpy(dbg_vect.name, "vel3D", 10);
-	dbg_vect.x = 1.0f;
-	dbg_vect.y = 2.0f;
-	dbg_vect.z = 3.0f;
-	orb_advert_t pub_dbg_vect = orb_advertise(ORB_ID(debug_vect), &dbg_vect);
-
         //int local_pos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
 	/* Setup of loop */
 	//int vcom_sub = orb_subscribe(ORB_ID(vehicle_command));
@@ -577,8 +540,6 @@ dbg.value= 0.0f;
 	//if (status.arming_state == 1)
 	//{warnx("commander started");
 	PX4_INFO("value of arming state is %d", (int)status.arming_state);
-	int t1=hrt_absolute_time();
-	int flag1=1;
 
 
 	while (!thread_should_exit) {
@@ -620,27 +581,20 @@ dbg.value= 0.0f;
 			//hrt_abstime time =hrt_absolute_time();
 			//hrt_abstime t;
 				if (pos_updated) {
-					//if(status.arming_state == 1)
 
-					double t=(hrt_absolute_time() - t1)* 1e-6f;
-					if(status.arming_state==2)
-					{
-					if (flag1==1)
-					{t1=status.nav_state_timestamp;
-					flag1=2;}}
+					double t=hrt_absolute_time() ;
 					//t=time;
-
+					if (vcom.command==22)
+					{warnx("commander detected");}
                 			orb_copy(ORB_ID(vehicle_local_position), local_sub, &_local_pos);
                 			orb_copy(ORB_ID(vehicle_angular_velocity), omega_sub, &angular_velocity);
                 			orb_copy(ORB_ID(vehicle_attitude), att_sub, &_v_att);
 					//t=hrt_elapsed_time(&time);
-					const double posc[3] = {_local_pos.y,_local_pos.x, -_local_pos.z};
-					const double velc[3] = {_local_pos.vy,_local_pos.vx, -_local_pos.vz};
-					const double rotc[3]=  {Eulerf(Quatf(_v_att.q)).theta(),Eulerf(Quatf(_v_att.q)).phi(),Eulerf(Quatf(_v_att.q)).psi()};
-//Eulerf(Quatf(_v_att.q)).psi(),Eulerf(Quatf(_v_att.q)).theta(),Eulerf(Quatf(_v_att.q)).phi()
-
+					const double posc[3] = {_local_pos.x, _local_pos.y, -_local_pos.z};
+					const double velc[3] = {_local_pos.vx, _local_pos.vy, _local_pos.vz};
+					const double rotc[3]=  { Eulerf(Quatf(_v_att.q)).psi(),Eulerf(Quatf(_v_att.q)).theta(),Eulerf(Quatf(_v_att.q)).phi()};
 					
-			  		const double omegac[3]={angular_velocity.xyz[1],angular_velocity.xyz[0],angular_velocity.xyz[2]};
+					const double omegac[3]={angular_velocity.xyz[0],angular_velocity.xyz[1],angular_velocity.xyz[2]};
 					double Thrust;
 					double M[3];
 
@@ -650,24 +604,19 @@ dbg.value= 0.0f;
 					controller(posc, velc, rotc, omegac, t, M, &Thrust);
 					//controller(posc, velc, rotc, omegac, t, M, Thrust);
 
-					//if(status.arming_state == 1){
-					//M[0]=0;M[1]=0;M[2]=0; //Thrust=0;}
+
+					
 					actuators.control[0]=M[0];
 					actuators.control[1]=M[1];
 					actuators.control[2]=M[2];
 					actuators.control[3]=Thrust;
 					actuators.timestamp=hrt_absolute_time();
-
-					orb_copy(ORB_ID(vehicle_status), stat, &status);
-						//dbg.value = actuators.control[3];
-					dbg.value = t;
-
-
-
+						dbg.value = posc[0];
 
 				}
-					orb_publish(ORB_ID(debug_vect), pub_dbg_vect, &dbg_vect);
+				
 					orb_publish(ORB_ID(vehicle_local_position_setpoint), loc_pub,&_local_pos_setp);
+					//orb_publish(ORB_ID(vehicle_attitude_setpoint), att_pub,&_att_set);
 					orb_publish(ORB_ID(vehicle_attitude_setpoint), att_pub,&_att_set);
 					orb_publish(ORB_ID(vehicle_rates_setpoint), rate_pub,&_rate_set);
 					orb_publish(ORB_ID(debug_key_value), pub_dbg, &dbg);
@@ -696,7 +645,7 @@ dbg.value= 0.0f;
 		actuators.control[i] = 0.0f;
 	}
 
-	orb_publish(ORB_ID(actuator_controls_0), actuator_pub, &actuators);
+	orb_publish(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, actuator_pub, &actuators);
 
 	fflush(stdout);
 
@@ -705,7 +654,7 @@ dbg.value= 0.0f;
 
 /* Startup Functions */
 
-static void 
+static void
 usage(const char *reason)
 {
 	if (reason) {

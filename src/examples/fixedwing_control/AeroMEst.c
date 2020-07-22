@@ -44,15 +44,17 @@ void AeroMEst(const double eul[3], const double x_dot[3], const double omega[3],
   V = norm(x_dot);
   if (fabs(V) > 0.0000001)
   {
-    dv11[0] = cos(eul[1]) * cos(eul[0]);
-    dv11[1] = -cos(eul[2]) * sin(eul[0]) + sin(eul[2]) * sin(eul[1]) * cos(eul[0]);
+
+    dv11[0] = cos(eul[1]) * cos(eul[2]);
+    dv11[1] = -cos(eul[0]) * sin(eul[2]) + sin(eul[0]) * sin(eul[1]) * cos(eul[2]);
     dv11[2] = sin(eul[2]) * sin(eul[0]) + cos(eul[2]) * sin(eul[1]) * cos(eul[0]);
-    dv11[3] = cos(eul[1]) * sin(eul[0]);
+    dv11[3] = cos(eul[1]) * sin(eul[2]);
     dv11[4] = cos(eul[2]) * cos(eul[0]) + sin(eul[2]) * sin(eul[1]) * sin(eul[0]);
-    dv11[5] = -sin(eul[2]) * cos(eul[0]) + cos(eul[2]) * sin(eul[1]) * sin(eul[0]);
+    dv11[5] = -sin(eul[0]) * cos(eul[2]) + cos(eul[0]) * sin(eul[1]) * sin(eul[2]);
     dv11[6] = -sin(eul[1]);
-    dv11[7] = sin(eul[2]) * cos(eul[1]);
-    dv11[8] = cos(eul[2]) * cos(eul[1]);
+    dv11[7] = sin(eul[0]) * cos(eul[1]);
+    dv11[8] = cos(eul[0]) * cos(eul[1]);
+
     for (i = 0; i < 3; i++) {
       a[i] = 0.0;
       for (i3 = 0; i3 < 3; i3++) {

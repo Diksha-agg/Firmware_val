@@ -55,15 +55,15 @@ void AeroFEst(const double eul[3], const double x_dot[3], const double omega[3],
   V = norm(x_dot);
   if (fabs(V) < 0.00001) {return;
   } else {
-    dv7[0] = cos(eul[1]) * cos(eul[0]);
-    dv7[1] = -cos(eul[2]) * sin(eul[0]) + sin(eul[2]) * sin(eul[1]) * cos(eul[0]);
+    dv7[0] = cos(eul[1]) * cos(eul[2]);
+    dv7[1] = -cos(eul[0]) * sin(eul[2]) + sin(eul[0]) * sin(eul[1]) * cos(eul[2]);
     dv7[2] = sin(eul[2]) * sin(eul[0]) + cos(eul[2]) * sin(eul[1]) * cos(eul[0]);
-    dv7[3] = cos(eul[1]) * sin(eul[0]);
+    dv7[3] = cos(eul[1]) * sin(eul[2]);
     dv7[4] = cos(eul[2]) * cos(eul[0]) + sin(eul[2]) * sin(eul[1]) * sin(eul[0]);
-    dv7[5] = -sin(eul[2]) * cos(eul[0]) + cos(eul[2]) * sin(eul[1]) * sin(eul[0]);
+    dv7[5] = -sin(eul[0]) * cos(eul[2]) + cos(eul[0]) * sin(eul[1]) * sin(eul[2]);
     dv7[6] = -sin(eul[1]);
-    dv7[7] = sin(eul[2]) * cos(eul[1]);
-    dv7[8] = cos(eul[2]) * cos(eul[1]);
+    dv7[7] = sin(eul[0]) * cos(eul[1]);
+    dv7[8] = cos(eul[0]) * cos(eul[1]);
     for (i = 0; i < 3; i++) {
       dv8[i] = 0.0;
       for (i2 = 0; i2 < 3; i2++) {
