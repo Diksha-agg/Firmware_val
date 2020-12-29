@@ -79,7 +79,6 @@
 //#include <px4_posix.h>
 #include <unistd.h>
 #include <stdio.h>
-#include <iostream>
 #include <poll.h>
 #include <string.h>
 #include <math.h>
@@ -154,7 +153,6 @@ struct vehicle_local_position_setpoint_s _local_pos_setp;
 struct vehicle_attitude_s _v_att {};				/**< vehicle attitude */
 struct vehicle_angular_velocity_s angular_velocity{};		/**< vehicle angular velocity */
 struct actuator_controls_s actuators{};		/**< actuators */
-struct actuator_controls_s ailactuators{};		/**< actuators */
 vehicle_attitude_setpoint_s _att_set{};
 vehicle_rates_setpoint_s _rate_set{};
 struct debug_key_value_s dbg{};
@@ -271,7 +269,7 @@ if (t>1 && trans ==1 && posc[2]>5 && velc[0]<0.05 && velc[1]<0.05 && velc[2]<0.9
                 //hover_y=0;//ch
                 hover_y=posc[1];//ch
 		            fort_t=t;
-		           // cruise_t=t;
+		            cruise_t=t;
 		            hover_z=-posc[2];
 		            warnx("forward transition finished");
                 PX4_INFO("value of current height is %f", (double)hover_z);
@@ -282,24 +280,19 @@ if (t>1 && trans ==1 && posc[2]>5 && velc[0]<0.05 && velc[1]<0.05 && velc[2]<0.9
                 PX4_INFO("value of current pitch is %f", (double)rotc[1]);
                 PX4_INFO("value of current roll is %f", (double)rotc[0]);
                 }
-    //else if(t>1 && trans ==3 && velc[0]>19.9 && velc[0]<20 && velc[1]<0.05 && velc[2]<0.05 && rotc[0]<0.05 && rotc[1]>1.5 && rotc[1]<1.539 && rotc[2]<0.05 && omegac[0]<0.05 && omegac[1]<0.05&& omegac[2]<0.05)
-	else if (t>(1) && trans==3 && velc[0]>19 && velc[0]<20)
+    else if(t>1 && trans ==0 && velc[0]>19.9 && velc[0]<20 && velc[1]<0.05 && velc[2]<0.05 && rotc[0]<0.05 && rotc[1]>1.5 && rotc[1]<1.539 && rotc[2]<0.05 && omegac[0]<0.05 && omegac[1]<0.05&& omegac[2]<0.05)
+	//else if (t>(fort_t+1) && trans==3)
 		{ trans=4;
                 hover_x=posc[0];
-                hover_y=posc[1];//ch
-                //hover_y=0;//ch
+                //hover_y=posc[1];//ch
+                hover_y=0;//ch
 		            cruise_t=t;
 		            hover_z=-posc[2];
 		            warnx("cruise finished");
                 PX4_INFO("value of current height is %f", (double)hover_z);
-                PX4_INFO("value of current y is %f", (double)hover_y);
                 PX4_INFO("value of current x is %f", (double)hover_x);
-                PX4_INFO("value of current vx is %f", (double)velc[0]);
-                PX4_INFO("value of current yaw is %f", (double)rotc[2]);
-                PX4_INFO("value of current pitch is %f", (double)rotc[1]);
-                PX4_INFO("value of current roll is %f", (double)rotc[0]);
                 }
-	else if (t>(cruise_t+Tbf) && trans==4)
+	else if (t>(cruise_t+Tbf) && trans==3)
 		{ trans=5;
                 hover_x=posc[0];//ch
                 hover_y=posc[1];//ch
@@ -375,15 +368,15 @@ if (t>1 && trans ==1 && posc[2]>5 && velc[0]<0.05 && velc[1]<0.05 && velc[2]<0.9
 		    memcpy(e_a, kv, sizeof(kw));
 
 		}
-  else if (trans==3)
+  else if (trans==0)
 	  {
 	      time_traj_cruise(t, posd, veld, rotd, b1, controld);
      		/*double kv[9] = { 105, 0, 0, 0, 100, 0, 0, 0, 10 };  // kv derivative v
      		double kp[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 50 }; // kp proportional x
      		double kr[9] = { 0.1, 0, 0, 0, 10, 0, 0, 0, 0.1 }; // kr error in rotation
      		double kw[9] = { 5 , 0, 0, 0, 10 , 0, 0, 0, 0.1 }; //kw error in omega*/
-     		double kv[9] = { 60, 0, 0, 0, 5, 0, 0, 0, 10 };  // kv derivative v//15 15 30
-     		double kp[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 10 }; // kp proportional x
+     		double kv[9] = { 10, 0, 0, 0, 15, 0, 0, 0, 10 };  // kv derivative v//15 15 30
+     		double kp[9] = { 0, 0, 0, 0, 0, 0, 0, 0, 30 }; // kp proportional x
      		double kr[9] = { 5, 0, 0, 0, 30, 0, 0, 0, 3 }; // kr error in rotation
      		double kw[9] = { 5 , 0, 0, 0, 60 , 0, 0, 0, 5 }; //kw error in omega
 		    memcpy(a, kv, sizeof(kv));
@@ -391,7 +384,7 @@ if (t>1 && trans ==1 && posc[2]>5 && velc[0]<0.05 && velc[1]<0.05 && velc[2]<0.9
 		    memcpy(d_a, kr, sizeof(kr));
 		    memcpy(e_a, kv, sizeof(kw));
 	  }
-  else if (trans==4)
+  else if (trans==3)
 	  {
 	      time_traj_back(t, posd, veld, rotd, b1, controld);
      		/*double kv[9] = { 100, 0, 0, 0, 100, 0, 0, 0, 30 };  // kv derivative v
@@ -446,7 +439,7 @@ posd[2]=-_local_pos_setp.z;
   _rate_set.pitch=-b1[1];
   _rate_set.yaw=b1[2];
   _rate_set.timestamp=hrt_absolute_time() ;
-if (trans == 2|| trans == 3 || trans ==4)
+if (trans == 2|| trans == 3 )
 {					//start of non linear code
 
 //if (controld[0]>0 || controld[0]<0)
@@ -754,8 +747,8 @@ double kpphi=0.1;	//0.1
 double kdphi=1;		//1
 double kptheta=0.1;	//0.1
 double kdtheta=0.6;	//0.1
-double kppsi=1;	//0.1
-double kdpsi=1;		//0.1
+double kppsi=0.1;	//0.1
+double kdpsi=0.1;		//0.1
 M[0]=kpphi*(phides-rotc[0])+kdphi*(-omegac[0]);
 M[1]=kptheta*(thetades-rotc[1])+kdtheta*(-omegac[1]);
 M[2]=(kppsi*(-rotc[2])+kdpsi*(-omegac[2]));
@@ -852,7 +845,7 @@ int fixedwing_control_thread_main(int argc, char *argv[])
 	/* output structs - this is what is sent to the mixer */
 	//struct actuator_controls_s actuators_p;
 	memset(&actuators, 0, sizeof(actuators));
-	memset(&ailactuators, 0, sizeof(ailactuators));
+
 
 	/* publish actuator controls with zero values */
 
@@ -867,7 +860,6 @@ int fixedwing_control_thread_main(int argc, char *argv[])
 	 */
 	//orb_advert_t actuator_pub = orb_advertise(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, &actuators);
 	orb_advert_t actuator_pub = orb_advertise(ORB_ID(actuator_controls_0), &actuators);
-	orb_advert_t actuator_pub2 = orb_advertise(ORB_ID(actuator_controls_1), &ailactuators);
         orb_advert_t att_pub = orb_advertise(ORB_ID(vehicle_attitude_setpoint), &_att_set);
         orb_advert_t rate_pub = orb_advertise(ORB_ID(vehicle_rates_setpoint), &_rate_set);
         orb_advert_t loc_pub = orb_advertise(ORB_ID(vehicle_local_position_setpoint), &_local_pos_setp);
@@ -903,7 +895,7 @@ dbg.value= 0.0f;
 	int t1=hrt_absolute_time();
 	int flag1=1;
 	float psi=0;
-	//int ij=0;
+
 					double Thrust=0;
 	while (!thread_should_exit) {
 
@@ -981,30 +973,17 @@ dbg.value= 0.0f;
 
 					//PX4_INFO((double)_local_pos_setp.y);
 
-					controller(posc, velc, rotc, omegac, t, M, &Thrust);
-
-															//	double thr[411]={0.0055134906,0.0055134906,0.0055134906,0.0055134906,0.0055134906,0.0055134906,0.0055134906,0.019129205,0.019129205,0.019129205,0.019129205,0.019129205,0.029697143,0.029697143,0.029697143,0.029697143,0.029697143,0.029697143,0.03148746,0.03148746,0.03148746,0.03148746,0.03148746,0.03148746,0.030079667,0.030079667,0.030079667,0.030079667,0.030079667,0.030079667,0.029208874,0.029208874,0.029208874,0.029208874,0.029208874,0.029208874,0.02916276,0.02916276,0.02916276,0.02916276,0.02916276,0.02916276,0.02916276,0.029316235,0.029316235,0.029316235,0.029316235,0.029316235,0.029316235,0.02938198,0.02938198,0.02938198,0.02938198,0.02938198,0.02938198,0.02938198,0.02937622,0.02937622,0.02937622,0.02937622,0.02937622,0.02937622,0.029361218,0.029361218,0.029361218,0.029361218,0.029361218,0.029361218,0.031562198,0.031562198,0.031562198,0.031562198,0.031562198,0.031562198,0.031562198,0.03936222,0.03936222,0.03936222,0.03936222,0.03936222,0.03936222,0.053943228,0.053943228,0.053943228,0.053943228,0.053943228,0.053943228,0.07103632,0.07103632,0.07103632,0.07103632,0.07103632,0.07103632,0.08184881,0.08184881,0.08184881,0.08184881,0.08184881,0.08184881,0.08184881,0.084518835,0.084518835,0.084518835,0.084518835,0.084518835,0.084518835,0.085042275,0.085042275,0.085042275,0.085042275,0.085042275,0.085042275,0.087469615,0.087469615,0.087469615,0.087469615,0.087469615,0.087469615,0.09193975,0.09193975,0.09193975,0.09193975,0.09193975,0.09193975,0.09193975,0.09679193,0.09679193,0.09679193,0.09679193,0.09679193,0.09679193,0.09679193,0.1000988,0.1000988,0.1000988,0.1000988,0.1000988,0.10147334,0.10147334,0.10147334,0.10147334,0.10147334,0.10147334,0.10147334,0.1017013,0.1017013,0.1017013,0.1017013,0.1017013,0.10151638,0.10151638,0.10151638,0.10151638,0.10151638,0.10151638,0.101403415,0.101403415,0.101403415,0.101403415,0.101403415,0.101403415,0.10139788,0.10139788,0.10139788,0.10139788,0.10139788,0.10139788,0.10141796,0.10141796,0.10141796,0.10141796,0.10141796,0.10141796,0.10141796,0.10142646,0.10142646,0.10142646,0.10142646,0.10142646,0.10142646,0.10142566,0.10142566,0.10142566,0.10142566,0.10142566,0.10142566,0.10142371,0.10142371,0.10142371,0.10142371,0.10142371,0.10142371,0.10142314,0.10142314,0.10142314,0.10142314,0.10142314,0.10142314,0.10142314,0.101423316,0.101423316,0.101423316,0.101423316,0.101423316,0.101423316,0.101423316,0.10142349,0.10142349,0.10142349,0.10142349,0.10142349,0.10160731,0.10160731,0.10160731,0.10160731,0.10160731,0.10160731,0.10222655,0.10222655,0.10222655,0.10222655,0.10222655,0.10222655,0.10222655,0.10407343,0.10407343,0.10407343,0.10407343,0.10407343,0.10407343,0.1072076,0.1072076,0.1072076,0.1072076,0.1072076,0.1072076,0.109474376,0.109474376,0.109474376,0.109474376,0.109474376,0.109474376,0.10988208,0.10988208,0.10988208,0.10988208,0.10988208,0.10988208,0.10958887,0.10958887,0.10958887,0.10958887,0.10958887,0.10958887,0.10940068,0.10940068,0.10940068,0.10940068,0.10940068,0.10940068,0.10938856,0.10938856,0.10938856,0.10938856,0.10938856,0.10942093,0.10942093,0.10942093,0.10942093,0.10942093,0.10942093,0.10942093,0.10943527,0.10943527,0.10943527,0.10943527,0.10943527,0.10943422,0.10943422,0.10943422,0.10943422,0.10943422,0.10943422,0.109614804,0.109614804,0.109614804,0.109614804,0.109614804,0.109614804,0.109614804,0.110968225,0.110968225,0.110968225,0.110968225,0.110968225,0.110968225,0.11382218,0.11382218,0.11382218,0.11382218,0.11663338,0.11663338,0.11663338,0.11663338,0.11663338,0.11663338,0.11663338,0.118216045,0.118216045,0.118216045,0.118216045,0.118216045,0.11861797,0.11861797,0.11861797,0.11861797,0.11861797,0.11861797,0.11845658,0.11845658,0.11845658,0.11845658,0.11845658,0.11845658,0.11831824,0.11831824,0.11831824,0.11831824,0.11831824,0.11831824,0.11831824,0.11829872,0.11829872,0.11829872,0.11829872,0.11829872,0.11831859,0.11831859,0.11831859,0.11831859,0.11831859,0.11831859,0.11831859,0.11888111,0.11888111,0.11888111,0.11888111,0.11888111,0.11888111,0.12129048,0.12129048,0.12129048,0.12129048,0.12129048,0.12574632,0.12574632,0.12574632,0.12574632,0.12574632,0.12574632,0.13022919,0.13022919,0.13022919,0.13022919,0.13022919,0.13022919,0.13321859,0.13321859,0.13321859,0.13321859,0.13321859,0.13321859,0.13509949,0.13509949,0.13509949,0.13509949,0.13509949,0.13509949,0.13612807,0.13612807,0.13612807,0.13612807,0.13612807,0.13632363,0.13632363,0.13632363,0.13632363,0.13632363,0.13632363,0.13632363,0.13619448,0.13619448,0.13619448,0.13619448,0.13619448,0.13619448,0.13610847,0.13610847,0.13610847,0.13610847,0.13610847,0.13610847,0.13610847,0.13610198,0.13610198,0.13610198,0.13610198,0.13610198,0.13610198,0.14034343,0.14034343};
-					/*if(ij>411)
-					{Thrust=0;} else
-					{Thrust=thr[ij];} ij=ij+1;std::cout<<ij;*/
-					}
+					controller(posc, velc, rotc, omegac, t, M, &Thrust);}
 					//controller(posc, velc, rotc, omegac, t, M, Thrust);
 
-				
 
-					 M[0]=0; M[1]=0;M[2]=0;      Thrust=.6; 
-					//M[2]=0;     // Thrust=0.7; 
-						double gg=0;  
-						if (t>1 ){M[2]=0.0;}
-						//{M[2]=0.5; gg=-0;}  //else if(t>1) {M[2]=.3;}//m2 is negative mean yaw angle incM[2]=-0.6; gg=-0.04;
-						//else{gg=0;}
+
+					// M[2]=0;M[0]=0; M[1]=0;      Thrust=0.6;     
 					actuators.control[0]=M[0];
 					actuators.control[1]=-M[1];
 					actuators.control[2]=-M[2];
 					actuators.control[3]=Thrust;
-					ailactuators.control[0]=gg;
 					actuators.timestamp=hrt_absolute_time();
-					ailactuators.timestamp=hrt_absolute_time();
 					/*dbg_vect.x = M[0];
 					dbg_vect.y = -M[1];
 					dbg_vect.z = M[2];
@@ -1027,11 +1006,10 @@ dbg.value= 0.0f;
 				if (PX4_ISFINITE(actuators.control[0]) &&
 				    PX4_ISFINITE(actuators.control[1]) &&
 				    PX4_ISFINITE(actuators.control[2]) &&
-				    PX4_ISFINITE(ailactuators.control[0]) &&
 				    PX4_ISFINITE(actuators.control[3])) {
 					//orb_publish(ORB_ID_VEHICLE_ATTITUDE_CONTROLS, actuator_pub, &actuators);
 					orb_publish(ORB_ID(actuator_controls_0), actuator_pub, &actuators);
-					orb_publish(ORB_ID(actuator_controls_1), actuator_pub2, &ailactuators);
+
 					if (verbose) {
 						warnx("*published*");
 					}
@@ -1049,7 +1027,7 @@ dbg.value= 0.0f;
 	}
 
 	orb_publish(ORB_ID(actuator_controls_0), actuator_pub, &actuators);
-	orb_publish(ORB_ID(actuator_controls_1), actuator_pub2, &ailactuators);
+
 	fflush(stdout);
 
 	return 0;

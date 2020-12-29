@@ -325,6 +325,7 @@ MulticopterAttitudeControl::Run()
 			}
 
 			control_attitude();
+//give if condition here and call the function here 
 
 			if (_v_control_mode.flag_control_yawrate_override_enabled) {
 				/* Yaw rate override enabled, overwrite the yaw setpoint */

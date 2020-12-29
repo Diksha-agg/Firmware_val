@@ -26,7 +26,7 @@ mc_hover_thrust_estimator start
 
 fw_att_control start vtol
 fw_pos_control_l1 start vtol
-
+#ex_fixedwing_control start
 # Start Land Detector
 # Multicopter for now until we have something for VTOL
 #

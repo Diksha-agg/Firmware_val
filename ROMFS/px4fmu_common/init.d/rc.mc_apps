@@ -59,7 +59,6 @@ fi
 #mc_att_control start
 
 ex_fixedwing_control start
-#px4_simple_app start
 
 #
 # Start Multicopter Position Controller.
@@ -71,3 +70,6 @@ mc_hover_thrust_estimator start
 # Start Multicopter Land Detector.
 #
 land_detector start multicopter
+
+
+
