@@ -1,0 +1,19 @@
+velocity is nearly same as visible in qgc
+but when it flies with different velocities, it shows different from qgc alot
+now lift is cal using this vel actualy speed
+liftI is cal using velocity direction which is creating problems
+vel is going in that dir becoz of lift first
+
+if system is controlled then is it abletofly nicely  straightforward wihtout gg
+tocontrol it will change the vel of rotors and it will change the lift 
+inflow will change and thus lift and so if rotor vel is different then they will be different lifts and thus they might yw 
+why vel for 2 wings are different
+
+without any lift,its going straight and the vel nearlymatch
+but still the lift calculation is showing diff answer becoz the rotor will rotate at diff rpm to make it stable and thus lift will be different
+
+if it tries to make it stable the vel of rotor will be different and thus lift will be different and it will produce yaw 
+
+when lift is on then first lift will try to pitch it and and in stablizing that the rotor iwll produce different rpms and thus different lift and it will automatically yaw which shud be controlled by ailerons 
+
+n flight check the 

@@ -62,10 +62,10 @@ posd[2]=10;
 //t = t/t_max;
 
 //posd[0] = 10*pow(tc,3) - 15*pow(tc,4) + 6*pow(tc,5);
-if(t<5)
+if(t<10)
 {posd[2]=t;}
 else
-{posd[2]=5;}
+{posd[2]=10;}
 
 posd[0]=0;
 posd[1]=0;

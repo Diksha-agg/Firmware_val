@@ -1,34 +1,3 @@
-#include<iostream>
-#include<fstream>
-#include <vector>
-#include <cstring>
-#include <string>
-
-#include <cstring>
-#include <float.h>
-#include <fstream>
-#include <iostream>
-#include <math.h>
-#include <time.h>
-#include <sstream>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string>
-using namespace std;
-
-
-double read_file()
-{
-	fstream filemy;
-	filemy.open("test.csv",ios::in);
-	string line,param_name;
-
-	while(filemy)
-	{cout<<getline(filemy,line);
-	cout<<line;}
-	double thh=0;	
-	return thh;
-
-}
-
-
+version https://git-lfs.github.com/spec/v1
+oid sha256:0cca0ae2b59a8339708492f2508e46f4a42a5b8eab6c5ba687a3c4e679cf3f97
+size 498

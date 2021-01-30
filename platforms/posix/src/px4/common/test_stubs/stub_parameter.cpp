@@ -1,11 +1,3 @@
-#include "stub_parameter.h"
-
-
-
-extern "C" {
-	/* This function blocks forever in tests, so override it with a version that can be customized */
-	int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
-	{
-		return stub_pthread_cond_wait_callback(cond, mutex);
-	}
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:a915f051978470c2ffcf9b19a3466da5a754f7f12801c0eb50178f8c2f6c2fa6
+size 275
