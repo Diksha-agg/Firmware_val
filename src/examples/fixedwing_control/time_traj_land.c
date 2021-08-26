@@ -27,10 +27,11 @@ static double back_z=0;
 void time_traj_land(double t, double posd[3], double veld[3], double rot_des[3],
                 double omegad[3], double controld[2])
 {
-double t1;
-t1=t-back_t;
+//double t1;
+//t1=t-back_t;
 posd[0]=0;
-posd[2]=(back_z*(5-t1))/(5);
+//posd[2]=(back_z*(5-t1))/(5);
+posd[2]=0;
 if(posd[2]<0)
 {posd[2]=0;}
 posd[1]=0;

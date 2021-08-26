@@ -73,6 +73,8 @@ for(int i=0;i<4;i++)
  posd[2] += coeffz[i+(n*(j-1))]*time[i];
  veld[2] += coeffz[i+(n*(j-1))]*timev[i];
 }
+
+posd[2]=0;
 double tl1 = (j-1)*h;
 double tl2 = (j)*h;
 
